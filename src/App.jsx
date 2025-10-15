@@ -142,20 +142,33 @@ const Header = React.memo(({ theme, toggleTheme, onNewChat, activeChatId, chatHi
 });
 
 const Sidebar = React.memo(({ isSidebarOpen, onToggleSidebar, onNewChat, chatHistory, loadChat, activeChatId, onDeleteChat }) => {
-    const [openMenuId, setOpenMenuId] = useState(null);
+    const [openMenu, setOpenMenu] = useState({ id: null, position: null });
     const menuRef = useRef(null);
 
-    useEffect(() => {
-        function handleClickOutside(event) {
-            if (menuRef.current && !menuRef.current.contains(event.target)) {
-                setOpenMenuId(null);
+    const handleMenuClick = (e, chatId) => {
+        e.stopPropagation();
+        const rect = e.currentTarget.getBoundingClientRect();
+        setOpenMenu({
+            id: chatId,
+            position: {
+                top: rect.bottom,
+                left: rect.left,
             }
-        }
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, [menuRef]);
+        });
+    };
+
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (menuRef.current && !menuRef.current.contains(event.target)) {
+                setOpenMenu({ id: null, position: null });
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     return (
+        <>
         <motion.aside
             initial={false}
             animate={{ width: isSidebarOpen ? '16rem' : '4rem' }}
@@ -186,24 +199,9 @@ const Sidebar = React.memo(({ isSidebarOpen, onToggleSidebar, onNewChat, chatHis
                             </button>
                             {isSidebarOpen && (
                                 <div className="absolute right-1 top-1/2 -translate-y-1/2">
-                                    <button onClick={() => setOpenMenuId(openMenuId === chat.id ? null : chat.id)} className="p-1 rounded-full hover:bg-zinc-300 dark:hover:bg-zinc-700 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button onClick={(e) => handleMenuClick(e, chat.id)} className="p-1 rounded-full hover:bg-zinc-300 dark:hover:bg-zinc-700 opacity-0 group-hover:opacity-100 transition-opacity">
                                         <MoreHorizontalIcon className="h-4 w-4" />
                                     </button>
-                                     <AnimatePresence>
-                                        {openMenuId === chat.id && (
-                                            <motion.div
-                                                ref={menuRef}
-                                                initial={{ opacity: 0, scale: 0.95 }}
-                                                animate={{ opacity: 1, scale: 1 }}
-                                                exit={{ opacity: 0, scale: 0.95 }}
-                                                className="absolute right-0 top-full mt-1 w-32 bg-white dark:bg-zinc-800 rounded-md shadow-lg border border-zinc-200 dark:border-zinc-700 overflow-hidden z-20"
-                                            >
-                                                <button onClick={() => console.log("Share")} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700">Share</button>
-                                                <button onClick={() => console.log("Rename")} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700">Rename</button>
-                                                <button onClick={() => onDeleteChat(chat.id)} className="block w-full text-left px-3 py-1.5 text-sm text-red-600 dark:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20">Delete</button>
-                                            </motion.div>
-                                        )}
-                                    </AnimatePresence>
                                 </div>
                             )}
                             {!isSidebarOpen && <div className="absolute left-full ml-2 px-2 py-1 bg-zinc-800 text-white text-xs rounded-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50">{chat.title}</div>}
@@ -212,6 +210,28 @@ const Sidebar = React.memo(({ isSidebarOpen, onToggleSidebar, onNewChat, chatHis
                 </div>
             </nav>
         </motion.aside>
+
+        <AnimatePresence>
+            {openMenu.id && (
+                <motion.div
+                    ref={menuRef}
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    style={{
+                        position: 'fixed',
+                        top: openMenu.position.top,
+                        left: openMenu.position.left,
+                    }}
+                    className="w-32 bg-white dark:bg-zinc-800 rounded-md shadow-lg border border-zinc-200 dark:border-zinc-700 overflow-hidden z-50"
+                >
+                    <button onClick={() => { console.log("Share"); setOpenMenu({id: null, position: null}); }} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700">Share</button>
+                    <button onClick={() => { console.log("Rename"); setOpenMenu({id: null, position: null}); }} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700">Rename</button>
+                    <button onClick={() => { onDeleteChat(openMenu.id); setOpenMenu({id: null, position: null}); }} className="block w-full text-left px-3 py-1.5 text-sm text-red-600 dark:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20">Delete</button>
+                </motion.div>
+            )}
+        </AnimatePresence>
+        </>
     );
 });
 
@@ -309,13 +329,6 @@ const AIResponse = ({ text }) => {
 
 const MainChatArea = ({ messages }) => {
     const scrollRef = useRef(null);
-    const conversationPairs = [];
-
-    for (let i = 0; i < messages.length; i += 2) {
-        if (messages[i] && messages[i].sender === 'user') {
-            conversationPairs.push({ user: messages[i], ai: messages[i + 1] });
-        }
-    }
 
     useEffect(() => {
         if (scrollRef.current) {
@@ -323,18 +336,25 @@ const MainChatArea = ({ messages }) => {
         }
     }, [messages]);
 
+    const conversationPairs = messages.reduce((acc, message, index) => {
+        if (message.sender === 'user') {
+            acc.push({ user: message, ai: messages[index + 1] });
+        }
+        return acc;
+    }, []);
+
     return (
         <div ref={scrollRef} className="flex-1 overflow-y-auto themed-scrollbar">
-            <div className="pt-24 pb-8 px-4 md:px-6">
-                 {messages.length === 0 ? (
-                    <div className="flex flex-col h-[calc(100vh-12rem)]">
-                        <WelcomeScreen />
-                    </div>
-                ) : (
-                    <div className="w-full">
+            {messages.length === 0 ? (
+                <div className="flex h-full">
+                    <WelcomeScreen />
+                </div>
+            ) : (
+                <div className="pt-24 pb-8 px-4 md:px-6">
+                    <div className="w-full space-y-4">
                         {conversationPairs.map((pair, index) => (
                             <motion.div key={pair.user.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: index * 0.1 }}>
-                                {index > 0 && <div className="w-full max-w-4xl mx-auto my-4 border-t-2 border-dashed border-zinc-200 dark:border-zinc-800"></div>}
+                                {index > 0 && <div className="w-full max-w-4xl mx-auto my-4 border-t-4 border-double border-zinc-300 dark:border-zinc-700"></div>}
                                 <UserPrompt text={pair.user.text} />
                                 {pair.ai && (
                                     <>
@@ -345,8 +365,8 @@ const MainChatArea = ({ messages }) => {
                             </motion.div>
                         ))}
                     </div>
-                )}
-            </div>
+                </div>
+            )}
         </div>
     );
 };
@@ -569,16 +589,18 @@ export default function App() {
                     activeChatId={activeChatId}
                     onDeleteChat={handleDeleteChat}
                 />
-                <div className="flex-1 flex flex-col min-w-0 h-full relative">
-                   <Header 
-                        theme={theme} 
-                        toggleTheme={toggleTheme} 
-                        onNewChat={handleNewChat}
-                        activeChatId={activeChatId}
-                        chatHistory={chatHistory}
-                    />
-                   <MainChatArea messages={messages} />
-                   <Composer onSendMessage={handleSendMessage} />
+                <div className="flex-1 flex flex-col min-w-0 h-full">
+                   <div className="relative flex-1 flex flex-col h-full">
+                       <Header 
+                            theme={theme} 
+                            toggleTheme={toggleTheme} 
+                            onNewChat={handleNewChat}
+                            activeChatId={activeChatId}
+                            chatHistory={chatHistory}
+                        />
+                       <MainChatArea messages={messages} />
+                       <Composer onSendMessage={handleSendMessage} />
+                   </div>
                 </div>
             </div>
         </>
